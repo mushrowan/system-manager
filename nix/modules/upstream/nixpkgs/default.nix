@@ -1,6 +1,7 @@
 {
   nixosModulesPath,
   lib,
+  pkgs,
   ...
 }:
 {
@@ -8,6 +9,7 @@
     ./firewall.nix
     ./nginx.nix
     ./nix.nix
+    ./openssh.nix
     ./userborn.nix
     ./users-groups.nix
     ../sops-nix.nix
@@ -20,6 +22,7 @@
       "/misc/ids.nix"
       "/security/acme/"
       "/services/web-servers/nginx/"
+      "/services/networking/ssh/sshd.nix"
       # nix settings
       "/config/nix.nix"
       "/services/system/userborn.nix"
@@ -44,24 +47,36 @@
         default = "";
       };
 
-      services.openssh = {
-        enable = lib.mkOption {
+      # stubs for upstream sshd.nix deps
+      programs.ssh = {
+        package = lib.mkOption {
+          type = lib.types.package;
+          default = pkgs.openssh;
+        };
+        setXAuthLocation = lib.mkOption {
           type = lib.types.bool;
           default = false;
         };
-        # sops-nix uses hostKeys to find SSH keys for age decryption.
-        # On non-NixOS systems, users should set sops.age.sshKeyPaths explicitly.
-        hostKeys = lib.mkOption {
-          type = lib.types.listOf (
-            lib.types.submodule {
-              options = {
-                path = lib.mkOption { type = lib.types.path; };
-                type = lib.mkOption { type = lib.types.str; };
-              };
-            }
-          );
-          default = [ ];
+        knownHosts = lib.mkOption {
+          type = lib.types.attrs;
+          default = { };
         };
+      };
+
+      # NSS is handled by the host distro
+      system.nssModules.path = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+      };
+
+      system.checks = lib.mkOption {
+        type = lib.types.listOf lib.types.package;
+        default = [ ];
+      };
+
+      security.pam.services = lib.mkOption {
+        type = lib.types.attrs;
+        default = { };
       };
     };
 }

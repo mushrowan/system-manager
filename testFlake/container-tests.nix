@@ -46,6 +46,55 @@ let
 in
 
 {
+  container-openssh = makeContainerTestFor "openssh" {
+    modules = [
+      {
+        nixpkgs.hostPlatform = system;
+        system-manager.allowAnyDistro = true;
+
+        services.openssh = {
+          enable = true;
+          settings = {
+            PermitRootLogin = "yes";
+            PasswordAuthentication = false;
+          };
+        };
+      }
+    ];
+    testScriptFunction =
+      { ... }:
+      ''
+        start_all()
+        machine.wait_for_unit("multi-user.target")
+
+        # stop ubuntu's ssh and remove its config so system-manager can take over
+        machine.succeed("systemctl stop ssh.socket ssh.service || true")
+        machine.succeed("rm -f /etc/ssh/sshd_config /etc/ssh/moduli")
+
+        machine.activate()
+        machine.wait_for_unit("system-manager.target")
+
+        with subtest("sshd config managed"):
+            assert machine.file("/etc/ssh/sshd_config").exists, "sshd_config should exist"
+
+        with subtest("host keys generated"):
+            assert machine.file("/etc/ssh/ssh_host_ed25519_key").exists, "ed25519 host key missing"
+            assert machine.file("/etc/ssh/ssh_host_rsa_key").exists, "rsa host key missing"
+
+        with subtest("sshd is running"):
+            machine.wait_for_unit("sshd.service")
+            machine.succeed("pgrep sshd")
+
+        with subtest("sshd listens on port 22"):
+            machine.succeed("ss -tlnp | grep ':22 '")
+
+        with subtest("config has expected settings"):
+            sshd_conf = machine.file("/etc/ssh/sshd_config")
+            assert sshd_conf.contains("PermitRootLogin yes"), "should permit root login"
+            assert sshd_conf.contains("PasswordAuthentication no"), "should disable password auth"
+      '';
+  };
+
   container-example = makeContainerTestFor "example" {
     modules = [
       ../examples/example.nix
